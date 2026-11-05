@@ -1,0 +1,54 @@
+esults
+          });
+        }
+
+        return json({
+          ok: false,
+          error: "Not found"
+        }, 404);
+      }
+
+      return json({
+        ok: false,
+        error: "Not found"
+      }, 404);
+
+    } catch (error) {
+      console.error("API error:", error);
+
+      return json({
+        ok: false,
+        error: "Internal server error"
+      }, 500);
+    }
+  }
+};
+
+
+
+===== admin-service-work/wrangler.toml =====
+name = "isa-admin-api"
+main = "src/index.js"
+compatibility_date = "2026-11-02"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "isa-admin-prod-db"
+database_id = "36c92973-5128-4cf0-8420-736a607a65b8"
+migrations_dir = "migrations"
+
+
+PROJE DOSYA SAYISI: 4
+
+
+######## PROJE: content-data ########
+
+
+===== content-data/README.md =====
+# ISAFLIX Diagnostic Report
+
+ISA TV HD / ISAFLIX project diagnostic output.
+This repository contains the diagnostic report only.
+
+
+PROJE DOSYA SAYISI: 1

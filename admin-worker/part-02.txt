@@ -1,0 +1,224 @@
+or("TOKEN_SIGNING_SECRET missing");
+  }
+
+  return crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(env.TOKEN_SIGNING_SECRET),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign", "verify"]
+  );
+}
+
+async function createToken(payload, env) {
+  const header = b64url(
+    new TextEncoder().encode(JSON.stringify({
+      alg: "HS256",
+      typ: "JWT"
+    }))
+  );
+
+  const body = b64url(
+    new TextEncoder().encode(JSON.stringify(payload))
+  );
+
+  const input = header + "." + body;
+  const key = await importSigningKey(env);
+
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(input)
+  );
+
+  return input + "." + b64url(new Uint8Array(signature));
+}
+
+async function verifyToken(token, env) {
+  try {
+    if (typeof token !== "string" || token.length > 8192) return null;
+
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+
+    const key = await importSigningKey(env);
+
+    const valid = await crypto.subtle.verify(
+      "HMAC",
+      key,
+      unb64url(parts[2]),
+      new TextEncoder().encode(parts[0] + "." + parts[1])
+    );
+
+    if (!valid) return null;
+
+    const payload = JSON.parse(
+      new TextDecoder().decode(unb64url(parts[1]))
+    );
+
+    if (!payload.exp || payload.exp <= Math.floor(Date.now() / 1000)) {
+      return null;
+    }
+
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+function bearer(request) {
+  const value = request.headers.get("Authorization") || "";
+  return value.startsWith("Bearer ") ? value.slice(7) : "";
+}
+
+async function hashPassword(password) {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(password),
+    "PBKDF2",
+    false,
+    ["deriveBits"]
+  );
+
+  const derived = await crypto.subtle.deriveBits({
+    name: "PBKDF2",
+    salt,
+    iterations: 120000,
+    hash: "SHA-256"
+  }, key, 256);
+
+  return "pbkdf2$120000$" +
+    b64url(salt) + "$" +
+    b64url(new Uint8Array(derived));
+}
+
+async function checkPassword(password, stored) {
+  try {
+    const parts = stored.split("$");
+
+    if (parts.length !== 4 || parts[0] !== "pbkdf2") return false;
+
+    const iterations = Number(parts[1]);
+
+    if (!Number.isInteger(iterations) ||
+        iterations < 100000 ||
+        iterations > 500000) return false;
+
+    const salt = unb64url(parts[2]);
+    const expected = unb64url(parts[3]);
+
+    const key = await crypto.subtle.importKey(
+      "raw",
+      new TextEncoder().encode(password),
+      "PBKDF2",
+      false,
+      ["deriveBits"]
+    );
+
+    const actual = new Uint8Array(
+      await crypto.subtle.deriveBits({
+        name: "PBKDF2",
+        salt,
+        iterations,
+        hash: "SHA-256"
+      }, key, 256)
+    );
+
+    if (actual.length !== expected.length) return false;
+
+    let diff = 0;
+    for (let i = 0; i < actual.length; i++) {
+      diff |= actual[i] ^ expected[i];
+    }
+
+    return diff === 0;
+  } catch {
+    return false;
+  }
+}
+
+async function adminAuth(request, env) {
+  const token = bearer(request);
+  if (!token) return false;
+
+  // Eski API anahtarı geriye dönük uyumluluk için korunur.
+  if (env.ADMIN_API_KEY && equalText(token, env.ADMIN_API_KEY)) {
+    return true;
+  }
+
+  const payload = await verifyToken(token, env);
+  return payload?.role === "admin";
+}
+
+async function memberAuth(request, env) {
+  const token = bearer(request);
+  if (!token) return null;
+
+  const payload = await verifyToken(token, env);
+
+  if (!payload ||
+      payload.role !== "member" ||
+      !payload.member_id ||
+      !payload.device_id) return null;
+
+  const tokenHash = await sha256(token);
+
+  const row = await env.DB.prepare(`
+    SELECT
+      d.id AS device_row_id,
+      d.status AS device_status,
+      m.id AS member_id,
+      m.member_code,
+      m.display_name,
+      m.status AS member_status,
+      m.expires_at,
+      m.max_devices
+    FROM devices d
+    JOIN members m ON m.id = d.member_id
+    WHERE d.member_id = ?
+      AND d.device_id = ?
+      AND d.token_hash = ?
+  `).bind(
+    payload.member_id,
+    payload.device_id,
+    tokenHash
+  ).first();
+
+  if (!row ||
+      row.device_status !== "active" ||
+      row.member_status !== "active") return null;
+
+  if (row.expires_at &&
+      new Date(row.expires_at).getTime() <= Date.now()) return null;
+
+  await env.DB.prepare(`
+    UPDATE devices SET last_seen = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).bind(row.device_row_id).run();
+
+  return row;
+}
+
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url);
+    const path = url.pathname;
+    const method = request.method;
+
+    if (method === "OPTIONS") {
+      return new Response(null, {
+        status: 204,
+        headers: cors
+      });
+    }
+
+      
+      // =================================
+      // SECOND URL M3U SYSTEM
+      // =================================
+      if (method === "GET" && path === "/playlist.m3u") {
+        try {
+          const source =
+            "ht

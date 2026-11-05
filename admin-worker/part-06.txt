@@ -1,0 +1,178 @@
+es") {
+          const result = await env.DB.prepare(`
+            SELECT
+              d.id, d.member_id, d.device_id, d.device_name,
+              d.status, d.paired_at, d.last_seen,
+              m.member_code, m.display_name
+            FROM devices d
+            LEFT JOIN members m ON m.id = d.member_id
+            ORDER BY d.paired_at DESC
+            LIMIT 1000
+          `).all();
+
+          return json({
+            ok: true,
+            devices: result.results
+          });
+        }
+
+        // CİHAZ KİLİTLEME / AÇMA
+        const deviceAction = path.match(
+          /^\/admin\/devices\/([a-f0-9-]+)\/(lock|unlock)$/i
+        );
+
+        if (method === "POST" && deviceAction) {
+          const deviceId = deviceAction[1];
+          const status = deviceAction[2] === "lock"
+            ? "blocked"
+            : "active";
+
+          const result = await env.DB.prepare(`
+            UPDATE devices SET status = ?
+            WHERE id = ?
+          `).bind(status, deviceId).run();
+
+          if (!result.meta.changes) {
+            return json({
+              ok: false,
+              error: "Device not found"
+            }, 404);
+          }
+
+          if (status === "blocked") {
+            await env.DB.prepare(`
+              UPDATE devices SET token_hash = NULL
+              WHERE id = ?
+            `).bind(deviceId).run();
+          }
+
+          return json({
+            ok: true,
+            device_id: deviceId,
+            status
+          });
+        }
+
+        // MESAJ GÖNDERME
+        if (method === "POST" && path === "/admin/messages") {
+          const body = await readJson(request);
+
+          if (!body) {
+            return json({ ok: false, error: "Invalid JSON" }, 400);
+          }
+
+          const title = String(body.title || "").trim();
+          const message = String(body.body || "").trim();
+          const memberId = body.member_id || null;
+
+          if (!title || title.length > 150 ||
+              !message || message.length > 5000) {
+            return json({
+              ok: false,
+              error: "Title/body missing or too long"
+            }, 400);
+          }
+
+          if (memberId) {
+            const member = await env.DB.prepare(
+              "SELECT id FROM members WHERE id = ?"
+            ).bind(memberId).first();
+
+            if (!member) {
+              return json({
+                ok: false,
+                error: "Member not found"
+              }, 404);
+            }
+          }
+
+          const id = uuid();
+          const expiresAt = new Date(
+            Date.now() + 24 * 60 * 60 * 1000
+          ).toISOString();
+
+          await env.DB.prepare(`
+            INSERT INTO messages
+              (id, member_id, title, body, expires_at)
+            VALUES (?, ?, ?, ?, ?)
+          `).bind(
+            id, memberId, title, message, expiresAt
+          ).run();
+
+          return json({
+            ok: true,
+            message_id: id,
+            target: memberId ? "member" : "all_members",
+            expires_at: expiresAt
+          }, 201);
+        }
+
+        // MESAJ LİSTELEME
+        if (method === "GET" && path === "/admin/messages") {
+          const result = await env.DB.prepare(`
+            SELECT *
+            FROM messages
+            WHERE expires_at > ?
+            ORDER BY created_at DESC
+            LIMIT 1000
+          `).bind(new Date().toISOString()).all();
+
+          return json({
+            ok: true,
+            messages: result.results
+          });
+        }
+
+        return json({
+          ok: false,
+          error: "Not found"
+        }, 404);
+      }
+
+      // =================================
+      // MEMBER AUTH
+      // =================================
+
+      if (path.startsWith("/member/")) {
+        const member = await memberAuth(request, env);
+
+        if (!member) {
+          return json({
+            ok: false,
+            error: "Unauthorized"
+          }, 401);
+        }
+
+        if (method === "GET" && path === "/member/profile") {
+          return json({
+            ok: true,
+            member: {
+              id: member.member_id,
+              member_code: member.member_code,
+              display_name: member.display_name,
+              status: member.member_status,
+              expires_at: member.expires_at,
+              max_devices: member.max_devices
+            }
+          });
+        }
+
+        if (method === "GET" && path === "/member/messages") {
+          const now = new Date().toISOString();
+
+          await env.DB.prepare(`
+            DELETE FROM messages WHERE expires_at <= ?
+          `).bind(now).run();
+
+          const result = await env.DB.prepare(`
+            SELECT id, title, body, created_at, expires_at
+            FROM messages
+            WHERE expires_at > ?
+              AND (member_id IS NULL OR member_id = ?)
+            ORDER BY created_at DESC
+            LIMIT 100
+          `).bind(now, member.member_id).all();
+
+          return json({
+            ok: true,
+            messages: result.r

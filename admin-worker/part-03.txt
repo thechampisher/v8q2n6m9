@@ -1,0 +1,152 @@
+tps://raw.githubusercontent.com/thechampisher/content-data/main/catalog/filmler_diziler_ikinci_url.json";
+
+          const response = await fetch(source, {
+            headers: { "Accept": "application/json" },
+            cf: { cacheTtl: 60, cacheEverything: true }
+          });
+
+          if (!response.ok) {
+            return new Response("GitHub katalog hatasi: " + response.status, {
+              status: 502,
+              headers: cors
+            });
+          }
+
+          const data = await response.json();
+
+          if (!Array.isArray(data)) {
+            return new Response("Gecersiz katalog", {
+              status: 502,
+              headers: cors
+            });
+          }
+
+          const lines = ["#EXTM3U"];
+          let movies = 0;
+          let episodes = 0;
+
+          const clean = value => String(value || "")
+            .replace(/[\r\n"]/g, " ")
+            .trim();
+
+          for (const item of data) {
+            if (!item || typeof item !== "object") continue;
+
+            const stream = String(item.second_url || "").trim();
+
+            if (!/^https?:\/\//i.test(stream)) continue;
+
+            let name;
+            let group;
+            let logo;
+
+            if (item.type === "movie") {
+              name = clean(item.name || "Film");
+              group = "FILMLER";
+              logo = clean(item.poster);
+              movies++;
+
+            } else if (item.type === "episode") {
+              const series = clean(item.name || "Dizi");
+              const episode = clean(item.episode_name || item.name);
+              const season = clean(item.season);
+              const number = clean(item.episode_num);
+
+              name = episode || `${series} S${season}E${number}`;
+              group = "DİZİLER";
+              logo = clean(item.series_poster || item.poster);
+              episodes++;
+
+            } else {
+              continue;
+            }
+
+            lines.push(
+              `#EXTINF:-1 tvg-name="${name}" tvg-logo="${logo}" group-title="${group}",${name}`,
+              stream
+            );
+          }
+
+          return new Response(lines.join("\n") + "\n", {
+            headers: {
+              ...cors,
+              "Content-Type": "audio/x-mpegurl; charset=utf-8",
+              "Content-Disposition": 'inline; filename="filmler_diziler.m3u"',
+              "Cache-Control": "public, max-age=60",
+              "X-Total-Items": String(movies + episodes),
+              "X-Movie-Count": String(movies),
+              "X-Episode-Count": String(episodes)
+            }
+          });
+
+        } catch (error) {
+          return new Response("M3U hatasi: " + String(error), {
+            status: 502,
+            headers: cors
+          });
+        }
+      }
+
+// =================================
+      // PUBLIC ISAFLIX M3U PLAYLIST
+      // =================================
+      if (method === "GET" && path === "/playlist.m3u") {
+        const source = "https://raw.githubusercontent.com/thechampisher/content-data/main/catalog/content.json";
+        const response = await fetch(source, {
+          headers: { "Accept": "application/json" }
+        });
+
+        if (!response.ok) {
+          return new Response("Katalog alınamadı: " + response.status, {
+            status: 502,
+            headers: { ...cors, "Content-Type": "text/plain; charset=utf-8" }
+          });
+        }
+
+        const data = await response.json();
+        const lines = ["#EXTM3U"];
+
+        function addItem(item, category, fallbackName) {
+          if (!item || typeof item !== "object") return;
+
+          const stream = String(
+            item.stream_url || item.direct_url || item.video_url || ""
+          ).trim();
+
+          if (!/^https?:\/\//i.test(stream)) return;
+          if (!/\.(m3u8|mp4|mkv|mpd|ts|aac|mp3)(?:$|[?#])/i.test(stream)) return;
+
+          const name = String(
+            item.name || item.title || fallbackName || "İçerik"
+          ).replace(/[\r\n"]/g, " ").trim();
+
+          const group = String(
+            item.category_name || item.group_title || category || "ISAFLIX"
+          ).replace(/[\r\n"]/g, " ").trim();
+
+          const logo = String(item.poster_url || "").replace(/[\r\n"]/g, "");
+          lines.push(
+            `#EXTINF:-1 tvg-logo="${logo}" group-title="${group}",${name}`,
+            stream
+          );
+        }
+
+        for (const movie of (Array.isArray(data.movies) ? data.movies : [])) {
+          addItem(movie, movie.category_name, "Film");
+        }
+
+        for (const series of (Array.isArray(data.series) ? data.series : [])) {
+          const episodes = Array.isArray(series.episodes) ? series.episodes : [];
+          for (const episode of episodes) {
+            addItem(
+              episode,
+              series.category_name || series.group_title,
+              series.name
+            );
+          }
+        }
+
+        return new Response(lines.join("\n") + "\n", {
+          headers: {
+            ...cors,
+            "Content-Type": "audio/x-mpegurl; ch

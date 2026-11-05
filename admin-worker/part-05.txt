@@ -1,0 +1,178 @@
+oken({
+          role: "member",
+          member_id: member.id,
+          device_id: deviceId,
+          iat: now,
+          exp: now + 43200
+        }, env);
+
+        const tokenHash = await sha256(token);
+
+        await env.DB.prepare(`
+          INSERT INTO devices
+            (id, member_id, device_id, device_name,
+             token_hash, status, last_seen)
+          VALUES (?, ?, ?, ?, ?, 'active', CURRENT_TIMESTAMP)
+          ON CONFLICT(member_id, device_id)
+          DO UPDATE SET
+            device_name = excluded.device_name,
+            token_hash = excluded.token_hash,
+            last_seen = CURRENT_TIMESTAMP
+          WHERE devices.status = 'active'
+        `).bind(
+          existingDevice?.id || uuid(),
+          member.id,
+          deviceId,
+          deviceName.slice(0, 100),
+          tokenHash
+        ).run();
+
+        return json({
+          ok: true,
+          token,
+          token_type: "Bearer",
+          expires_in: 43200,
+          member: {
+            id: member.id,
+            member_code: member.member_code,
+            display_name: member.display_name,
+            max_devices: member.max_devices
+          }
+        });
+      }
+
+      // =================================
+      // ADMIN AUTH
+      // =================================
+
+      if (path.startsWith("/admin/")) {
+        if (!await adminAuth(request, env)) {
+          return json({
+            ok: false,
+            error: "Unauthorized"
+          }, 401);
+        }
+
+        // ÜYE LİSTELEME
+        if (method === "GET" && path === "/admin/members") {
+          const result = await env.DB.prepare(`
+            SELECT
+              id, member_code, display_name, status,
+              max_devices, expires_at, created_at
+            FROM members
+            ORDER BY created_at DESC
+            LIMIT 1000
+          `).all();
+
+          return json({
+            ok: true,
+            members: result.results
+          });
+        }
+
+        // ÜYE OLUŞTURMA
+        if (method === "POST" && path === "/admin/members") {
+          const body = await readJson(request);
+
+          if (!body) {
+            return json({ ok: false, error: "Invalid JSON" }, 400);
+          }
+
+          const displayName = String(body.display_name || "").trim();
+          const password = body.password;
+          const maxDevices = Number(body.max_devices ?? 1);
+
+          if (!displayName ||
+              displayName.length > 100 ||
+              typeof password !== "string" ||
+              password.length < 10 ||
+              password.length > 128) {
+            return json({
+              ok: false,
+              error: "display_name and password (10-128 chars) required"
+            }, 400);
+          }
+
+          if (!Number.isInteger(maxDevices) ||
+              maxDevices < 1 ||
+              maxDevices > 10) {
+            return json({
+              ok: false,
+              error: "max_devices must be between 1 and 10"
+            }, 400);
+          }
+
+          const id = uuid();
+          const memberCode = "ISA-" +
+            crypto.randomUUID()
+              .replaceAll("-", "")
+              .slice(0, 12)
+              .toUpperCase();
+
+          const passwordHash = await hashPassword(password);
+          const expiresAt = body.expires_at || null;
+
+          await env.DB.prepare(`
+            INSERT INTO members
+              (id, member_code, display_name, status,
+               max_devices, expires_at, password_hash)
+            VALUES (?, ?, ?, 'active', ?, ?, ?)
+          `).bind(
+            id,
+            memberCode,
+            displayName,
+            maxDevices,
+            expiresAt,
+            passwordHash
+          ).run();
+
+          return json({
+            ok: true,
+            member: {
+              id,
+              member_code: memberCode,
+              display_name: displayName,
+              status: "active",
+              max_devices: maxDevices,
+              expires_at: expiresAt
+            }
+          }, 201);
+        }
+
+        // ÜYE DURUMU
+        const memberStatus = path.match(
+          /^\/admin\/members\/([a-f0-9-]+)\/status$/i
+        );
+
+        if (method === "PATCH" && memberStatus) {
+          const body = await readJson(request);
+          const status = body?.status;
+
+          if (!["active", "inactive", "blocked"].includes(status)) {
+            return json({
+              ok: false,
+              error: "Invalid status"
+            }, 400);
+          }
+
+          const result = await env.DB.prepare(`
+            UPDATE members SET status = ?
+            WHERE id = ?
+          `).bind(status, memberStatus[1]).run();
+
+          if (!result.meta.changes) {
+            return json({
+              ok: false,
+              error: "Member not found"
+            }, 404);
+          }
+
+          return json({
+            ok: true,
+            member_id: memberStatus[1],
+            status
+          });
+        }
+
+        // CİHAZ LİSTELEME
+        if (method === "GET" && path === "/admin/devic
