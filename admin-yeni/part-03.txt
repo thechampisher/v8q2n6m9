@@ -1,0 +1,176 @@
+        settings.setJavaScriptEnabled(true);
+        settings.setDomStorageEnabled(true);
+        settings.setDatabaseEnabled(true);
+        settings.setJavaScriptCanOpenWindowsAutomatically(false);
+        settings.setAllowFileAccess(true);
+        settings.setAllowContentAccess(false);
+        settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
+
+        web.setWebViewClient(new WebViewClient());
+        web.setWebChromeClient(new WebChromeClient());
+        web.addJavascriptInterface(new ApiBridge(), "AndroidApi");
+
+        settings.setUserAgentString(
+            "Mozilla/5.0 (Linux; Android 11) AppleWebKit/537.36 " +
+            "(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+        );
+
+        root.addView(web, new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        ));
+        setContentView(root);
+        web.loadUrl("file:///android_asset/index.html");
+    }
+
+    public class ApiBridge {
+        @JavascriptInterface
+        public void request(
+            String id,
+            String method,
+            String url,
+            String body,
+            String token
+        ) {
+            pool.execute(() -> {
+                JSONObject result = new JSONObject();
+                HttpURLConnection c = null;
+
+                try {
+                    URL parsed = new URL(url);
+                    if (!"https".equalsIgnoreCase(parsed.getProtocol())) {
+                        throw new Exception("Yalnızca HTTPS bağlantısı kullanılabilir.");
+                    }
+
+                    c = (HttpURLConnection) parsed.openConnection();
+                    c.setRequestMethod(method);
+                    c.setConnectTimeout(30000);
+                    c.setReadTimeout(120000);
+                    c.setInstanceFollowRedirects(false);
+                    c.setRequestProperty(
+                        "User-Agent",
+                        "Mozilla/5.0 (Linux; Android 11) AppleWebKit/537.36 " +
+                        "(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+                    );
+                    c.setRequestProperty("Accept", "application/json");
+
+                    if (token != null && !token.isEmpty()) {
+                        c.setRequestProperty("Authorization", "Bearer " + token);
+                    }
+
+                    if (!"GET".equals(method) && !"HEAD".equals(method)) {
+                        c.setDoOutput(true);
+                        c.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+                        byte[] bytes = (body == null ? "{}" : body)
+                            .getBytes(StandardCharsets.UTF_8);
+                        try (OutputStream out = c.getOutputStream()) {
+                            out.write(bytes);
+                        }
+                    }
+
+                    int status = c.getResponseCode();
+                    InputStream input = status >= 400
+                        ? c.getErrorStream()
+                        : c.getInputStream();
+
+                    ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+                    if (input != null) {
+                        byte[] chunk = new byte[8192];
+                        int count;
+                        while ((count = input.read(chunk)) != -1) {
+                            buffer.write(chunk, 0, count);
+                        }
+                        input.close();
+                    }
+
+                    result.put("status", status);
+                    result.put("body", buffer.toString("UTF-8"));
+
+                } catch (Exception e) {
+                    try {
+                        result.put("status", 0);
+                        result.put("body", "");
+                        result.put("error", e.getMessage());
+                    } catch (Exception ignored) {}
+                } finally {
+                    if (c != null) c.disconnect();
+                }
+
+                final String response = result.toString();
+                final String callbackId = JSONObject.quote(id);
+
+                runOnUiThread(() -> {
+                    if (web != null) {
+                        web.evaluateJavascript(
+                            "window.__nativeResult(" + callbackId + "," +
+                            JSONObject.quote(response) + ")",
+                            null
+                        );
+                    }
+                });
+            });
+        }
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (web != null && web.canGoBack()) {
+            web.goBack();
+        } else {
+            super.onBackPressed();
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        pool.shutdownNow();
+        if (web != null) {
+            web.stopLoading();
+            web.destroy();
+            web = null;
+        }
+        super.onDestroy();
+    }
+}
+
+
+
+========================
+DOSYA: build.gradle
+========================
+plugins {
+    id 'com.android.application' version '9.5.0' apply false
+}
+
+
+
+========================
+DOSYA: gradle.properties
+========================
+org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+org.gradle.parallel=true
+org.gradle.caching=true
+android.useAndroidX=true
+
+
+
+========================
+DOSYA: settings.gradle
+========================
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+rootProject.name = "ControlCenter"
+include(":app")
+

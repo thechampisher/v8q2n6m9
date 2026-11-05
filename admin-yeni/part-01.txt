@@ -1,0 +1,233 @@
+GUNCEL ADMIN APK KAYNAK RAPORU
+PROJE: /data/data/com.termux/files/home/ADMIN-YENI
+DOSYA SAYISI: 7
+
+
+========================
+DOSYA: app/build.gradle
+========================
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.control.center'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.control.center'
+        minSdk 23
+        targetSdk 35
+        versionCode 2
+        versionName '1.1'
+    }
+}
+
+
+
+========================
+DOSYA: app/src/main/AndroidManifest.xml
+========================
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <application
+        android:allowBackup="false"
+        android:label="Yönetim Merkezi"
+        android:theme="@android:style/Theme.Material.Light.NoActionBar"
+        android:usesCleartextTraffic="false">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:screenOrientation="unspecified">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
+
+
+
+========================
+DOSYA: app/src/main/assets/index.html
+========================
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>Yönetim Merkezi</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#0c1220;color:#edf2ff;font-family:Arial,sans-serif}
+header{padding:18px;background:#151f32;border-bottom:1px solid #293750}
+h1{font-size:21px;margin:0}
+main{padding:14px;max-width:760px;margin:auto}
+.card{background:#151f32;border:1px solid #293750;border-radius:14px;padding:15px;margin:12px 0}
+h2{font-size:17px;margin:0 0 14px}
+input,select,textarea{width:100%;padding:13px;margin:6px 0 11px;border:1px solid #40516d;border-radius:9px;background:#0d1729;color:white;font-size:15px}
+textarea{min-height:90px;resize:vertical}
+button{border:0;border-radius:9px;padding:12px 15px;background:#2878ed;color:white;font-weight:bold;font-size:14px;margin:4px 3px 4px 0}
+button.red{background:#b73545}
+button.gray{background:#394b65}
+button:disabled{opacity:.5}
+.small{color:#9eacc4;font-size:12px}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+.row>*{flex:1}
+.item{padding:12px 0;border-bottom:1px solid #293750}
+.item:last-child{border:0}
+#app{display:none}
+#status{padding:10px;border-radius:8px;background:#202e45;margin:10px 0;white-space:pre-wrap;font-size:13px}
+.hidden{display:none}
+.badge{font-size:11px;color:#a8c7ff}
+</style>
+</head>
+<body>
+<header><h1>Yönetim Merkezi</h1></header>
+<main>
+<div id="status">Bağlantı bekleniyor.</div>
+
+<section id="login" class="card">
+<h2>Yönetici girişi</h2>
+<label>Worker adresi</label>
+<input id="worker" value="https://isa-admin-api.githuba85.workers.dev">
+<label>Yönetici şifresi</label>
+<input id="password" type="password" autocomplete="current-password">
+<button onclick="login()">Giriş yap</button>
+</section>
+
+<div id="app">
+<div class="card">
+<div class="row">
+<button onclick="show('members')">Üyeler</button>
+<button onclick="show('messages')">Mesajlar</button>
+<button onclick="show('broadcast')">Merkezi yayın</button>
+<button onclick="show('sources')">Kaynak ekle</button>
+</div>
+<button class="gray" onclick="logout()">Oturumu kapat</button>
+</div>
+
+<section id="members" class="card">
+<h2>Üyeler</h2>
+<button onclick="loadMembers()">Listeyi yenile</button>
+<button onclick="toggle('createMember')">+ Üye oluştur</button>
+<div id="createMember" class="hidden">
+<input id="memberName" placeholder="Üye adı">
+<input id="memberPassword" type="password" placeholder="Üye şifresi (10-128 karakter)">
+<input id="memberDevices" type="number" min="1" max="10" value="1" placeholder="Cihaz sınırı">
+<input id="memberExpiry" type="datetime-local">
+<button onclick="createMember()">Üye oluştur</button>
+</div>
+<div id="memberList"></div>
+</section>
+
+<section id="messages" class="card hidden">
+<h2>Mesaj gönder</h2>
+<input id="messageTitle" placeholder="Mesaj başlığı">
+<textarea id="messageBody" placeholder="Mesaj içeriği"></textarea>
+<select id="messageTarget">
+<option value="">Tüm üyeler</option>
+</select>
+<button onclick="sendMessage()">Mesajı gönder</button>
+<h2>Gönderilen mesajlar</h2>
+<button onclick="loadMessages()">Mesajları yenile</button>
+<div id="messageList"></div>
+</section>
+
+<section id="broadcast" class="card hidden">
+<h2>Merkezi yayın</h2>
+<input id="broadcastTitle" placeholder="Yayın başlığı">
+<input id="broadcastUrl" placeholder="Kanal URL'si (HTTPS)">
+<textarea id="broadcastMessage" placeholder="Yayın açıklaması"></textarea>
+<select id="broadcastAudience">
+<option value="all">Tüm üyeler</option>
+<option value="selected">Seçili üye</option>
+</select>
+<select id="broadcastMember"></select>
+<button onclick="startBroadcast()">Yayını başlat</button>
+<button class="red" onclick="stopBroadcast()">Yayını durdur</button>
+<p class="small">Durdur butonu en son aktif yayını otomatik bulur. Yayın ID girmen gerekmez.</p>
+</section>
+
+<section id="sources" class="card hidden">
+<h2>Kaynak ekleme</h2>
+<p>Dosya, URL, Xtream ve MAC/Host giriş ekranı bu yeni uygulamada ayrılacak şekilde hazırlandı.</p>
+<p class="small">Mevcut Worker kodunda doğrulanmış kaynak yükleme endpoint'i ve dosya parça yükleme sözleşmesi bulunmadığı için bu ekran şu an istek göndermiyor. GitHub token'ı APK içine yazılmayacak.</p>
+</section>
+</div>
+</main>
+
+<script>
+let token=localStorage.getItem("admin_token")||"";
+let base=localStorage.getItem("worker_url")||"https://isa-admin-api.githuba85.workers.dev";
+if(base.includes("stream-access-service.githuba85.workers.dev")){
+ base="https://isa-admin-api.githuba85.workers.dev";
+ localStorage.setItem("worker_url",base);
+}
+let pending={};
+
+document.getElementById("worker").value=base;
+
+function status(s){document.getElementById("status").textContent=s}
+function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+function toggle(id){document.getElementById(id).classList.toggle("hidden")}
+function show(id){
+ ["members","messages","broadcast","sources"].forEach(x=>document.getElementById(x).classList.add("hidden"));
+ document.getElementById(id).classList.remove("hidden");
+ if(id==="members")loadMembers();
+ if(id==="messages"){loadMessages();loadMembers();}
+}
+function __nativeResult(id,raw){
+ const p=pending[id];if(!p)return;
+ delete pending[id];
+ try{p(JSON.parse(raw))}catch(e){p({status:0,error:String(e)})}
+}
+const STREAM_BASE="https://stream-access-service.githuba85.workers.dev";
+let streamToken=localStorage.getItem("stream_token")||"";
+let streamExpiresAt=Number(localStorage.getItem("stream_expires_at")||0);
+
+function requestTo(targetBase,targetToken,method,path,data=null){
+ return new Promise(resolve=>{
+  const id=String(Date.now())+String(Math.random()).slice(2);
+  pending[id]=resolve;
+  const url=targetBase.replace(/\/+$/,"")+path;
+  const body=data===null?"":JSON.stringify(data);
+  if(window.AndroidApi){
+   AndroidApi.request(id,method,url,body,targetToken||"");
+  }else{
+   fetch(url,{method,headers:{
+    "Content-Type":"application/json",
+    ...(targetToken?{Authorization:"Bearer "+targetToken}:{})
+   },body:method==="GET"?undefined:body})
+   .then(async r=>resolve({status:r.status,body:await r.text()}))
+   .catch(e=>resolve({status:0,error:e.message}));
+  }
+ });
+}
+
+function request(method,path,data=null){
+ return requestTo(base,token,method,path,data);
+}
+
+async function openStreamSession(password){
+ const r=await requestTo(STREAM_BASE,"","POST","/auth/admin/login",{password});
+ let j={};
+ try{j=JSON.parse(r.body||"{}")}catch(e){}
+ if(r.status!==200||!j.ok||!j.token){
+  throw new Error(j.error||r.error||("Yayın sunucusu giriş hatası: HTTP "+r.status));
+ }
+ streamToken=j.token;
+ streamExpiresAt=Date.now()+Number(j.expires_in||3600)*1000;
+ localStorage.setItem("stream_token",streamToken);
+ localStorage.setItem("stream_expires_at",String(streamExpiresAt));
+}
+
+async function ensureStreamSession(){
+ if(streamToken&&streamExpiresAt>Date.now()+30000)return;
+ const password=prompt("Yayın yönetimi için yönetici şifresini girin:");
+ if(!password)throw new Error("Yayın yönetimi oturumu açılmadı.");
+ await openStreamSession(password);
+}
+
+async function streamApi(method,path,data){

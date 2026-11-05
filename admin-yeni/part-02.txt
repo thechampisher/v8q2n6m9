@@ -1,0 +1,219 @@
+ await ensureStreamSession();
+ const r=await requestTo(STREAM_BASE,streamToken,method,path,data);
+ let j={};
+ try{j=JSON.parse(r.body||"{}")}catch(e){}
+ if(r.status<200||r.status>=300||!j.ok){
+  if(r.status===401){
+   streamToken="";
+   streamExpiresAt=0;
+   localStorage.removeItem("stream_token");
+   localStorage.removeItem("stream_expires_at");
+  }
+  throw new Error(j.error||r.error||("Yayın sunucusu HTTP "+r.status));
+ }
+ return j;
+}
+
+async function api(method,path,data){
+ const r=await request(method,path,data);
+ let j={};
+ try{j=JSON.parse(r.body||"{}")}catch(e){}
+ if(r.status<200||r.status>=300||!j.ok){
+  throw new Error(j.error||r.error||("HTTP "+r.status));
+ }
+ return j;
+}
+async function login(){
+ base=document.getElementById("worker").value.trim().replace(/\/+$/,"");
+ const password=document.getElementById("password").value;
+ if(!base.startsWith("https://"))return status("Worker adresi HTTPS olmalı.");
+ if(!password)return status("Yönetici şifresini gir.");
+ status("Giriş yapılıyor...");
+ try{
+  const r=await request("POST","/auth/admin/login",{password});
+  const j=JSON.parse(r.body||"{}");
+  if(r.status!==200||!j.ok||!j.token)throw new Error(j.error||"Giriş başarısız: HTTP "+r.status);
+  token=j.token;
+  localStorage.setItem("admin_token",token);
+  try{
+   await openStreamSession(password);
+  }catch(streamError){
+   console.warn("Yayın sunucusu oturumu açılamadı:",streamError.message);
+  }
+  localStorage.setItem("worker_url",base);
+  document.getElementById("login").style.display="none";
+  document.getElementById("app").style.display="block";
+  status("Yönetici girişi başarılı.");
+  loadMembers();
+ }catch(e){status("Giriş hatası: "+e.message)}
+}
+function logout(){
+ token="";localStorage.removeItem("admin_token");
+ document.getElementById("app").style.display="none";
+ document.getElementById("login").style.display="block";
+ status("Oturum kapatıldı.");
+}
+async function loadMembers(){
+ try{
+  const j=await api("GET","/admin/members");
+  const list=j.members||[];
+  const box=document.getElementById("memberList");
+  const select=document.getElementById("messageTarget");
+  const bselect=document.getElementById("broadcastMember");
+  select.innerHTML='<option value="">Tüm üyeler</option>';
+  bselect.innerHTML="";
+  box.innerHTML="";
+  list.forEach(m=>{
+   const id=m.id;
+   const name=m.display_name||m.member_code||id;
+   box.innerHTML+=`<div class="item"><b>${esc(name)}</b><br><span class="small">Kod: ${esc(m.member_code||"-")} · Durum: ${esc(m.status||"-")}</span><br><button class="red" onclick="deleteMember('${esc(id)}')">Üyeyi sil</button></div>`;
+   select.innerHTML+=`<option value="${esc(id)}">${esc(name)}</option>`;
+   bselect.innerHTML+=`<option value="${esc(id)}">${esc(name)}</option>`;
+  });
+  status("Üye listesi yüklendi: "+list.length);
+ }catch(e){status("Üye listesi hatası: "+e.message)}
+}
+async function createMember(){
+ const display_name=document.getElementById("memberName").value.trim();
+ const password=document.getElementById("memberPassword").value;
+ const max_devices=Number(document.getElementById("memberDevices").value||1);
+ const raw=document.getElementById("memberExpiry").value;
+ if(!display_name||password.length<10||password.length>128)return status("Ad gerekli; şifre 10-128 karakter olmalı.");
+ if(!Number.isInteger(max_devices)||max_devices<1||max_devices>10)return status("Cihaz sınırı 1-10 olmalı.");
+ const data={display_name,password,max_devices};
+ if(raw)data.expires_at=new Date(raw).toISOString();
+ try{
+  const j=await api("POST","/admin/members",data);
+  document.getElementById("memberName").value="";
+  document.getElementById("memberPassword").value="";
+  status("Üye oluşturuldu. Üye kodu: "+(j.member?.member_code||"oluşturuldu"));
+  loadMembers();
+ }catch(e){status("Üye ekleme hatası: "+e.message)}
+}
+async function deleteMember(id){
+ if(!confirm("Bu üyeyi ve bağlı kayıtlarını silmek istiyor musun?"))return;
+ try{
+  await api("POST","/admin/members/"+encodeURIComponent(id)+"/delete",{});
+  status("Üye silindi.");
+  loadMembers();
+ }catch(e){status("Üye silme hatası: "+e.message)}
+}
+async function sendMessage(){
+ const title=document.getElementById("messageTitle").value.trim();
+ const body=document.getElementById("messageBody").value.trim();
+ const member_id=document.getElementById("messageTarget").value;
+ if(!title||!body)return status("Başlık ve mesaj içeriği gerekli.");
+ try{
+  const data={title,body};
+  if(member_id)data.member_id=member_id;
+  await api("POST","/admin/messages",data);
+  status(member_id?"Üyeye mesaj gönderildi.":"Tüm üyelere mesaj gönderildi.");
+  document.getElementById("messageBody").value="";
+  loadMessages();
+ }catch(e){status("Mesaj gönderme hatası: "+e.message)}
+}
+async function loadMessages(){
+ try{
+  const j=await api("GET","/admin/messages");
+  const list=j.messages||[];
+  document.getElementById("messageList").innerHTML=list.map(m=>
+   `<div class="item"><b>${esc(m.title||"Mesaj")}</b><p>${esc(m.body||"")}</p><span class="small">${esc(m.created_at||"")}</span><br><button class="red" onclick="deleteMessage('${esc(m.id)}')">Mesajı sil</button></div>`
+  ).join("")||"Henüz mesaj yok.";
+  status("Mesajlar yüklendi: "+list.length);
+ }catch(e){status("Mesaj listesi hatası: "+e.message)}
+}
+async function deleteMessage(id){
+ if(!confirm("Bu mesaj kalıcı olarak silinsin mi?"))return;
+ try{
+  await api("POST","/admin/messages/"+encodeURIComponent(id)+"/delete",{});
+  status("Mesaj kalıcı olarak silindi.");
+  await loadMessages();
+ }catch(e){status("Mesaj silme hatası: "+e.message)}
+}
+async function startBroadcast(){
+ const title=document.getElementById("broadcastTitle").value.trim();
+ const stream_id=document.getElementById("broadcastUrl").value.trim();
+ const message=document.getElementById("broadcastMessage").value.trim();
+ const audience=document.getElementById("broadcastAudience").value;
+ const member_id=document.getElementById("broadcastMember").value;
+ if(!title||!stream_id)return status("Yayın başlığı ve kanal URL'si gerekli.");
+ if(!/^https?:\/\//i.test(stream_id))return status("Kanal adresi http:// veya https:// ile başlamalı.");
+ try{
+  const parsed=new URL(stream_id);
+  if(parsed.username||parsed.password)return status("Kanal adresinde kullanıcı adı veya parola bulunamaz.");
+ }catch(e){return status("Geçerli bir kanal adresi gir.");}
+ const data={title,message,stream_id,audience};
+ if(audience==="selected"){
+  if(!member_id)return status("Üye seç.");
+  data.member_ids=[member_id];
+ }
+ try{
+  const created=await streamApi("POST","/admin/streams",{
+   name:title,
+   source_url:stream_id,
+   source_type:"hls"
+  });
+  const sourceId=created.stream&&created.stream.id;
+  if(!sourceId)throw new Error("Kanal kaydı oluşturulamadı.");
+  const j=await streamApi("POST","/admin/broadcast/start",{...data,stream_id:sourceId});
+  status("Yayın başlatıldı.");
+ }catch(e){status("Yayın başlatma hatası: "+e.message)}
+}
+async function stopBroadcast(){
+ if(!confirm("Aktif yayın durdurulsun mu?"))return;
+ try{
+  await streamApi("POST","/admin/broadcast/stop",{});
+  status("Aktif yayın durduruldu.");
+ }catch(e){status("Yayın durdurma hatası: "+e.message)}
+}
+if(token){
+ document.getElementById("login").style.display="none";
+ document.getElementById("app").style.display="block";
+ loadMembers();
+}
+</script>
+</body>
+</html>
+
+
+
+========================
+DOSYA: app/src/main/java/com/control/center/MainActivity.java
+========================
+package com.control.center;
+
+import android.app.Activity;
+import android.os.Bundle;
+import android.webkit.WebView;
+import android.webkit.WebSettings;
+import android.webkit.JavascriptInterface;
+import android.graphics.Color;
+import android.view.ViewGroup;
+import android.widget.FrameLayout;
+import android.webkit.WebChromeClient;
+import android.webkit.WebViewClient;
+
+import java.net.URL;
+import java.net.HttpURLConnection;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.ByteArrayOutputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+import org.json.JSONObject;
+
+public class MainActivity extends Activity {
+    private WebView web;
+    private final ExecutorService pool = Executors.newCachedThreadPool();
+
+    @Override
+    public void onCreate(Bundle state) {
+        super.onCreate(state);
+
+        FrameLayout root = new FrameLayout(this);
+        root.setBackgroundColor(Color.WHITE);
+
+        web = new WebView(this);
+        WebSettings settings = web.getSettings();
