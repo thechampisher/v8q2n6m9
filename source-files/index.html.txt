@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#090b10">
+<title>İSA TV HD</title>
+<link rel="stylesheet" href="css/isa-style.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="homepage">
+
+<img class="isa-tv-brand-mark" src="assets/logo.png" alt="İSA TV HD">
+
+<header class="isa-header">
+    <button id="isa-refresh" class="isa-refresh" type="button" aria-label="Yenile">
+        <i class="fas fa-rotate"></i>
+        <span>Yenile</span>
+    </button>
+    <div class="isa-header-title">
+        <span class="isa-live-dot"></span>
+        <strong>İSA TV HD</strong>
+    </div>
+    <button id="isa-toggle-source-form" class="isa-action isa-source-toggle isa-header-source-toggle" type="button">＋ Liste ekle</button>
+</header>
+
+<main class="isa-main">
+
+    <section id="isa-live-panel" class="isa-panel active">
+        <div class="isa-section-heading">
+            <div>
+                <span class="isa-eyebrow">CANLI YAYIN</span>
+                
+                <p id="isa-live-status">Kanallar yükleniyor...</p>
+            </div>
+        </div>
+
+        <section id="isa-central-broadcast" class="isa-central-broadcast" hidden>
+            <div class="isa-central-broadcast-info">
+                <span class="isa-central-broadcast-label">MERKEZİ YAYIN</span>
+                <h3 id="isa-central-broadcast-title">Yayın hazırlanıyor</h3>
+                <p id="isa-central-broadcast-message"></p>
+            </div>
+            <div class="isa-central-broadcast-actions">
+                <button type="button" id="isa-central-broadcast-open">Aç</button>
+                <button type="button" id="isa-central-broadcast-hide">Kapat</button>
+            </div>
+        </section>
+
+        <div class="isa-source-section isa-source-compact">
+            <div id="isa-saved-lists"></div>
+            <div id="isa-source-form" hidden>
+                <label class="isa-field-label" for="isa-source-type">Kaynak türü</label>
+                <select id="isa-source-type" class="isa-source-select">
+                    <option value="">Kaynak türünü seçin</option><option value="m3u">M3U</option><option value="xtream">Xtream Codes</option><option value="mag">MAG</option>
+                </select>
+                <div id="isa-source-fields"></div>
+                <button id="isa-source-add" class="isa-action isa-source-add"><i class="fas fa-plus"></i> Kaynağı ekle</button>
+                <div class="isa-file-row"><label for="isa-m3u-file" class="isa-file-button"><i class="fas fa-folder-open"></i> M3U dosyası seç</label><input id="isa-m3u-file" type="file" accept=".m3u,.m3u8,.txt"></div>
+                <div id="isa-upload-status" aria-live="polite"></div>
+            </div>
+        </div>
+
+        <div id="isa-source-loading" class="isa-source-loading"
+             aria-live="polite">
+            <div class="isa-spinner"></div>
+            <strong>İçerik yükleniyor / indiriliyor</strong>
+            <div class="isa-load-track" aria-hidden="true"><span></span></div>
+            <small id="isa-loading-text">Lütfen bekleyin...</small>
+        </div>
+
+        <button id="isa-favorites-toggle" class="isa-favorites-toggle" type="button" style="display:none" aria-expanded="false">♥ Favoriler ▾</button>
+        <section id="isa-favorites-section" class="isa-favorites-section" hidden>
+            <div id="isa-favorites-grid" class="channels-grid"></div>
+        </section>
+        <div class="isa-channel-heading"><h2><i class="fas fa-satellite-dish"></i> Kanallar</h2></div>
+
+        <div id="all-channels">
+            <p class="isa-loading">Kanallar hazırlanıyor...</p>
+        </div>
+    </section>
+
+    <section id="isa-lists-panel" class="isa-panel">
+        <div class="isa-section-heading">
+            <div>
+                <span class="isa-eyebrow">KAYNAK YÖNETİMİ</span>
+                <h1>Listeler</h1>
+                <p>Eklediğiniz bütün M3U, Xtream ve MAG kaynakları.</p>
+            </div>
+        </div>
+        <div id="isa-all-saved-lists"></div>
+    </section>
+
+    <section id="isa-films-panel" class="isa-panel">
+        <div class="isa-section-heading"><div><span class="isa-eyebrow">VİDEO ARŞİVİ</span><h1>Filmler</h1><p>Film içerikleri bu bölümde gösterilecek.</p></div></div>
+        <div id="isa-films-content" class="isa-empty-state">Henüz film içeriği yüklenmedi.</div>
+    </section>
+
+    <section id="isa-series-panel" class="isa-panel">
+        <div class="isa-section-heading"><div><span class="isa-eyebrow">VİDEO ARŞİVİ</span><h1>Diziler</h1><p>Dizi, sezon ve bölümler bu bölümde gösterilecek.</p></div></div>
+        <div id="isa-series-content" class="isa-empty-state">Henüz dizi içeriği yüklenmedi.</div>
+    </section>
+
+    <section id="isa-flix-panel" class="isa-panel">
+        <div id="isa-flix-app">
+            <div class="isaf-progress-screen"><div class="isaf-progress-title">İçerikler indiriliyor</div><div class="isaf-progress-track"><div class="isaf-progress-fill" style="width:0%"></div></div><div class="isaf-progress-percent">0%</div></div>
+        </div>
+    </section>
+
+</main>
+
+<nav class="isa-bottom-nav" aria-label="Ana menü">
+    <button class="isa-tab active" data-tab="isa-live-panel"><i class="fas fa-tv"></i><span>Canlı TV</span></button>
+    <button class="isa-tab" data-tab="isa-films-panel"><i class="fas fa-film"></i><span>Filmler</span></button>
+    <button class="isa-tab" data-tab="isa-series-panel"><i class="fas fa-clapperboard"></i><span>Diziler</span></button>
+    <button class="isa-tab isa-flix-tab" data-tab="isa-flix-panel"><i class="fas fa-play"></i><span>İSA Flix</span></button>
+</nav>
+
+<script src="js/isa-sources.js"></script>
+<script src="js/tr-translation.js"></script>
+</body>
+</html>

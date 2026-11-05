@@ -1,0 +1,8 @@
+İSA TV HD - SORUNLU AKISLARIN TAM KAYNAKLARI
+
+app/src/main/assets/isa-tv-hd/js/isa-sources.js
+app/src/main/java/com/isatvhd/player/MainActivity.java
+app/src/main/assets/isa-tv-hd/index.html
+app/src/main/assets/isa-tv-hd/css/isa-style.css
+
+Amaç: Üye girişi, İSAFLİX katalog yükleme, çıkış düğmesi ve merkezi yayın oynatıcısı incelemesi.
